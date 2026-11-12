@@ -1,8 +1,11 @@
 
 package br.com.treinarecife.acervo.literario.api.service;
 
+import br.com.treinarecife.acervo.literario.api.dto.request.BiografiaRequestDTO;
+import br.com.treinarecife.acervo.literario.api.dto.response.BiografiaResponseDTO;
 import br.com.treinarecife.acervo.literario.api.entity.Autor;
 import br.com.treinarecife.acervo.literario.api.entity.Biografia;
+import br.com.treinarecife.acervo.literario.api.mapper.BiografiaMapper;
 import br.com.treinarecife.acervo.literario.api.repository.AutorRepository;
 import br.com.treinarecife.acervo.literario.api.repository.BiografiaRepository;
 
@@ -19,35 +22,46 @@ public class BiografiaService {
 
     private final BiografiaRepository biografiaRepository;
     private final AutorRepository autorRepository;
+    private final BiografiaMapper biografiaMapper;
 
     public BiografiaService(
             BiografiaRepository biografiaRepository,
-            AutorRepository autorRepository) {
+            AutorRepository autorRepository,
+            BiografiaMapper biografiaMapper) {
 
         this.biografiaRepository = biografiaRepository;
         this.autorRepository = autorRepository;
+        this.biografiaMapper = biografiaMapper;
     }
 
     // Cadastra uma nova biografia
-    public Biografia salvar(Biografia biografia) {
+    public BiografiaResponseDTO salvar(BiografiaRequestDTO dto) {
 
-        validarAutor(biografia, null);
+        Autor autor = validarAutor(dto.autorId(), null);
 
-        return biografiaRepository.save(biografia);
+        Biografia biografia = biografiaMapper.toEntity(dto);
+        biografia.setAutor(autor);
+
+        Biografia biografiaSalva = biografiaRepository.save(biografia);
+
+        return biografiaMapper.toResponseDTO(biografiaSalva);
     }
 
     // Lista todas as biografias
     @Transactional(readOnly = true)
-    public List<Biografia> listarTodos() {
+    public List<BiografiaResponseDTO> listarTodos() {
 
-        return biografiaRepository.findAll();
+        return biografiaRepository.findAll().stream()
+                .map(biografiaMapper::toResponseDTO)
+                .toList();
     }
 
     // Busca uma biografia pelo ID
     @Transactional(readOnly = true)
-    public Biografia buscarPorId(Long id) {
+    public BiografiaResponseDTO buscarPorId(Long id) {
 
         return biografiaRepository.findById(id)
+                .map(biografiaMapper::toResponseDTO)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Biografia não encontrada."));
@@ -55,58 +69,70 @@ public class BiografiaService {
 
     // Busca a biografia de um autor
     @Transactional(readOnly = true)
-    public Biografia buscarPorAutor(Long autorId) {
+    public BiografiaResponseDTO buscarPorAutor(Long autorId) {
 
         return biografiaRepository.findByAutor_Id(autorId)
+                .map(biografiaMapper::toResponseDTO)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Biografia não encontrada para o autor informado."));
     }
 
     // Atualiza uma biografia
-    public Biografia atualizar(Long id, Biografia dados) {
+    public BiografiaResponseDTO atualizar(
+            Long id,
+            BiografiaRequestDTO dados) {
 
-        Biografia biografia = buscarPorId(id);
+        Biografia biografia = biografiaRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Biografia não encontrada."));
 
-        validarAutor(dados, id);
+        Autor autor = validarAutor(dados.autorId(), id);
 
-        biografia.setTexto(dados.getTexto());
-        biografia.setDataNascimento(dados.getDataNascimento());
-        biografia.setAutor(dados.getAutor());
+        biografia.setTexto(dados.texto());
+        biografia.setDataNascimento(dados.dataNascimento());
+        biografia.setAutor(autor);
 
-        return biografiaRepository.save(biografia);
+        Biografia biografiaAtualizada =
+                biografiaRepository.save(biografia);
+
+        return biografiaMapper.toResponseDTO(biografiaAtualizada);
     }
 
     // Exclui uma biografia
     public void excluir(Long id) {
 
-        Biografia biografia = buscarPorId(id);
+        Biografia biografia = biografiaRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Biografia não encontrada."));
 
         biografiaRepository.delete(biografia);
     }
 
     // Valida o relacionamento entre biografia e autor
-    private void validarAutor(Biografia biografia, Long biografiaId) {
+    private Autor validarAutor(Long autorId, Long biografiaId) {
 
-        if (biografia.getAutor() == null ||
-                biografia.getAutor().getId() == null) {
+        // Verifica se o ID do autor foi informado
+        if (autorId == null) {
 
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "O cadastro da biografia exige um autor.");
         }
 
-        Autor autor = autorRepository
-                .findById(biografia.getAutor().getId())
+        // Verifica se o autor existe
+        Autor autor = autorRepository.findById(autorId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "O autor informado não está cadastrado."));
 
         // Verifica se o autor já possui uma biografia
-        biografiaRepository.findByAutor_Id(autor.getId())
+        biografiaRepository.findByAutor_Id(autorId)
                 .ifPresent(biografiaExistente -> {
 
-                    // Permite manter o próprio autor durante uma atualização
+                    // Permite manter o mesmo autor durante uma atualização
                     if (biografiaId == null ||
                             !biografiaExistente.getId().equals(biografiaId)) {
 
@@ -116,6 +142,6 @@ public class BiografiaService {
                     }
                 });
 
-        biografia.setAutor(autor);
+        return autor;
     }
 }

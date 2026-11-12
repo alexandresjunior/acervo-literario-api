@@ -1,9 +1,11 @@
-
 package br.com.treinarecife.acervo.literario.api.service;
 
+import br.com.treinarecife.acervo.literario.api.dto.request.LivroRequestDTO;
+import br.com.treinarecife.acervo.literario.api.dto.response.LivroResponseDTO;
 import br.com.treinarecife.acervo.literario.api.entity.Autor;
 import br.com.treinarecife.acervo.literario.api.entity.Categoria;
 import br.com.treinarecife.acervo.literario.api.entity.Livro;
+import br.com.treinarecife.acervo.literario.api.mapper.LivroMapper;
 import br.com.treinarecife.acervo.literario.api.repository.AutorRepository;
 import br.com.treinarecife.acervo.literario.api.repository.CategoriaRepository;
 import br.com.treinarecife.acervo.literario.api.repository.LivroRepository;
@@ -24,36 +26,43 @@ public class LivroService {
     private final LivroRepository livroRepository;
     private final AutorRepository autorRepository;
     private final CategoriaRepository categoriaRepository;
+    private final LivroMapper livroMapper;
 
     public LivroService(
             LivroRepository livroRepository,
             AutorRepository autorRepository,
-            CategoriaRepository categoriaRepository) {
+            CategoriaRepository categoriaRepository,
+            LivroMapper livroMapper) {
 
         this.livroRepository = livroRepository;
         this.autorRepository = autorRepository;
         this.categoriaRepository = categoriaRepository;
+        this.livroMapper = livroMapper;
     }
 
     // Cadastra um novo livro
-    public Livro salvar(Livro livro) {
+    public LivroResponseDTO salvar(LivroRequestDTO dto) {
+        Livro livro = livroMapper.toEntity(dto);
         validarRelacionamentos(livro);
-
-        return livroRepository.save(livro);
+        
+        Livro livroSalvo = livroRepository.save(livro);
+        
+        return livroMapper.toResponseDTO(livroSalvo);
     }
 
     // Lista todos os livros
     @Transactional(readOnly = true)
-    public List<Livro> listarTodos() {
-
-        return livroRepository.findAll();
+    public List<LivroResponseDTO> listarTodos() {
+        return livroRepository.findAll().stream()
+                .map(livroMapper::toResponseDTO)
+                .toList();
     }
 
     // Busca um livro pelo ID
     @Transactional(readOnly = true)
-    public Livro buscarPorId(Long id) {
-
+    public LivroResponseDTO buscarPorId(Long id) {
         return livroRepository.findById(id)
+                .map(livroMapper::toResponseDTO)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Livro não encontrado."));
@@ -61,41 +70,44 @@ public class LivroService {
 
     // Busca livros pelo título
     @Transactional(readOnly = true)
-    public List<Livro> buscarPorTitulo(String termo) {
-
-        return livroRepository
-                .findByTituloContainingIgnoreCase(termo);
+    public List<LivroResponseDTO> buscarPorTitulo(String termo) {
+        return livroRepository.findByTituloContainingIgnoreCase(termo).stream()
+                .map(livroMapper::toResponseDTO)
+                .toList();
     }
 
     // Busca livros pelo nome da categoria
     @Transactional(readOnly = true)
-    public List<Livro> buscarPorCategoria(String nome) {
-
-        return livroRepository.findByCategoriasNome(nome);
+    public List<LivroResponseDTO> buscarPorCategoria(String nome) {
+        return livroRepository.findByCategoriasNome(nome).stream()
+                .map(livroMapper::toResponseDTO)
+                .toList();
     }
 
     // Atualiza os dados de um livro
-    public Livro atualizar(Long id, Livro dados) {
+    public LivroResponseDTO atualizar(Long id, LivroRequestDTO dados) {
+        LivroResponseDTO livroDTO = buscarPorId(id);
 
-        Livro livro = buscarPorId(id);
+        Livro livro = livroMapper.toEntity(dados);
+        livro.setId(id); // Garante que a atualização ocorrerá no registro correto
+        
+        validarRelacionamentos(livro);
 
-        validarRelacionamentos(dados);
+        livro.setTitulo(dados.titulo());
+        livro.setIsbn(dados.isbn());
+        livro.setAnoPublicacao(dados.anoPublicacao());
+        // Obs: O setAutor e setCategorias são processados pelo validarRelacionamentos().
 
-        livro.setTitulo(dados.getTitulo());
-        livro.setIsbn(dados.getIsbn());
-        livro.setAnoPublicacao(dados.getAnoPublicacao());
-        livro.setAutor(dados.getAutor());
-        livro.setCategorias(dados.getCategorias());
+        Livro livroAtualizado = livroRepository.save(livro);
 
-        return livroRepository.save(livro);
+        return livroMapper.toResponseDTO(livroAtualizado);
     }
 
     // Exclui um livro
     public void excluir(Long id) {
+        LivroResponseDTO livroDTO = buscarPorId(id);
 
-        Livro livro = buscarPorId(id);
-
-        livroRepository.delete(livro);
+        livroRepository.deleteById(livroDTO.id());
     }
 
     // Valida os relacionamentos obrigatórios do livro

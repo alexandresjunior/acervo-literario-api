@@ -1,7 +1,10 @@
 
 package br.com.treinarecife.acervo.literario.api.service;
 
+import br.com.treinarecife.acervo.literario.api.dto.request.CategoriaRequestDTO;
+import br.com.treinarecife.acervo.literario.api.dto.response.CategoriaResponseDTO;
 import br.com.treinarecife.acervo.literario.api.entity.Categoria;
+import br.com.treinarecife.acervo.literario.api.mapper.CategoriaMapper;
 import br.com.treinarecife.acervo.literario.api.repository.CategoriaRepository;
 
 import org.springframework.http.HttpStatus;
@@ -16,31 +19,39 @@ import java.util.List;
 public class CategoriaService {
 
     private final CategoriaRepository categoriaRepository;
+    private final CategoriaMapper categoriaMapper;
 
-    public CategoriaService(CategoriaRepository categoriaRepository) {
+    public CategoriaService(CategoriaRepository categoriaRepository, CategoriaMapper categoriaMapper) {
         this.categoriaRepository = categoriaRepository;
+        this.categoriaMapper = categoriaMapper;
     }
 
     // Cadastra uma nova categoria
-    public Categoria salvar(Categoria categoria) {
+    public CategoriaResponseDTO salvar(CategoriaRequestDTO dto) {
+        Categoria categoria = categoriaMapper.toEntity(dto);
 
         validarNome(categoria.getNome(), null);
 
-        return categoriaRepository.save(categoria);
+        Categoria categoriaSalva = categoriaRepository.save(categoria);
+
+        return categoriaMapper.toResponseDTO(categoriaSalva);
     }
 
     // Lista todas as categorias
     @Transactional(readOnly = true)
-    public List<Categoria> listarTodos() {
+    public List<CategoriaResponseDTO> listarTodos() {
 
-        return categoriaRepository.findAll();
+        return categoriaRepository.findAll().stream()
+                .map(categoriaMapper::toResponseDTO)
+                .toList();
     }
 
     // Busca uma categoria pelo ID
     @Transactional(readOnly = true)
-    public Categoria buscarPorId(Long id) {
+    public CategoriaResponseDTO buscarPorId(Long id) {
 
         return categoriaRepository.findById(id)
+                .map(categoriaMapper::toResponseDTO)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Categoria não encontrada."));
@@ -57,23 +68,25 @@ public class CategoriaService {
     }
 
     // Atualiza uma categoria
-    public Categoria atualizar(Long id, Categoria dados) {
+    public CategoriaResponseDTO atualizar(Long id, CategoriaRequestDTO dados) {
+        CategoriaResponseDTO categoriaDTO = buscarPorId(id);
 
-        Categoria categoria = buscarPorId(id);
+        validarNome(dados.nome(), categoriaDTO.id());
 
-        validarNome(dados.getNome(), id);
+        Categoria categoria = categoriaMapper.toEntity(dados);
 
-        categoria.setNome(dados.getNome());
+        categoria.setNome(dados.nome());
 
-        return categoriaRepository.save(categoria);
+        Categoria categoriaAtualizada = categoriaRepository.save(categoria);
+
+        return categoriaMapper.toResponseDTO(categoriaAtualizada);
     }
 
     // Exclui uma categoria
     public void excluir(Long id) {
+        CategoriaResponseDTO categoriaDTO = buscarPorId(id);
 
-        Categoria categoria = buscarPorId(id);
-
-        categoriaRepository.delete(categoria);
+        categoriaRepository.deleteById(categoriaDTO.id());
     }
 
     // Valida o nome da categoria
